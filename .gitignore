@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Local environments and caches
+.agents/
+.codex
+.venv/
+venv/
+.cache/
+.ipynb_checkpoints/
+
+# Training outputs
+checkpoints/
+**/checkpoints/
+outputs/
+**/outputs/
+swanlab/
+**/swanlab/
+wandb/
+**/wandb/
+runs/
+**/runs/
+tensorboard/
+**/tensorboard/
+merge/
+**/merge/
+
+# Logs and temporary rollout artifacts
+*.log
+*.tmp
+*.temp
+rollouts_n*.json
+rollouts_n*_scored.json
+metrics_n*.json
+eval_policy.txt
+step2_rm_training/data/*rollout*.parquet
+step2_rm_training/data/*scored*.parquet
+
+# Model weights and optimizer states
+*.pt
+*.pth
+*.bin
+*.safetensors
+*.ckpt
+model_world_size_*_rank_*.pt
+optim_world_size_*_rank_*.pt
+extra_state_world_size_*_rank_*.pt

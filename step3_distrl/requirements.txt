@@ -1,0 +1,18 @@
+# Repo-local Python dependencies required by step3_distrl.
+# The full DistRL runtime still needs the upstream verl installation.
+hydra-core>=1.3,<1.4
+omegaconf>=2.3,<2.4
+codetiming
+numpy<2.0.0
+peft
+pybind11
+pylatexenc
+scikit-learn>=1.4
+ray
+tensorboard
+tensordict>=0.8.0,<=0.10.0,!=0.9.0
+torchdata
+wandb
+swanlab
+pytz
+debugpy==1.8.0

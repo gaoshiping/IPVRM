@@ -1,0 +1,174 @@
+hydra:
+  searchpath:
+    - pkg://verl.trainer.config
+
+defaults:
+  - ppo_trainer
+  - _self_
+
+paths:
+  project_root: ${oc.env:IPVRM_PROJECT_ROOT,.}
+  workspace_root: ${oc.env:IPVRM_WORKSPACE_ROOT,.}
+  step1_sft_path: ${oc.env:MODEL_PATH,Qwen/Qwen3-0.6B}
+  step2_rm_path: ${oc.env:RM_CKPT_PATH,./step2_rm_training/checkpoints/qwen3_0.6b_ipvrm/checkpoint-epoch-2}
+  train_file: ${oc.env:TRAIN_FILE,./step2_rm_training/data/dapo_math_processed.parquet}
+  val_file: ${oc.env:VAL_FILE,./eval_policy/data/val.parquet}
+  output_dir: ${oc.env:OUTPUT_DIR,./step3_distrl/checkpoints/default_run}
+
+data:
+  train_files:
+    - ${paths.train_file}
+  val_files:
+    - ${paths.val_file}
+  filter_accuracy: true
+  accuracy_lower_bound: 0.01
+  accuracy_upper_bound: 0.99
+  oversample_factor: 2.0
+  filter_truncate: true
+  train_batch_size: 512
+  val_batch_size: 4096
+  max_prompt_length: 1024
+  truncation: right
+  max_response_length: 2048
+  filter_overlong_prompts: true
+
+actor_rollout_ref:
+  hybrid_engine: true
+  model:
+    path: ${paths.step1_sft_path}
+    use_remove_padding: true
+    use_fused_kernels: false
+    override_config:
+      attn_implementation: flash_attention_2
+    enable_gradient_checkpointing: true
+    use_shm: false
+    lora_rank: 0
+    lora_alpha: 16
+    target_modules: all-linear
+  rollout:
+    prompt_length: 1024
+    name: vllm
+    mode: async
+    n: 16
+    temperature: 1.0
+    tensor_model_parallel_size: 1
+    gpu_memory_utilization: 0.9
+    max_num_seqs: 4096
+    load_format: safetensors
+    layered_summon: true
+    log_prob_micro_batch_size_per_gpu: 32
+    val_kwargs:
+      temperature: 0.6
+      top_p: 0.95
+      n: 8
+      do_sample: true
+  actor:
+    entropy_coeff: 0.0
+    pg_loss_coef: 1.0
+    distrl_loss_coef: 0.1
+    nll_loss_coef: 0.0
+    distrl_topk: ${candidate_top_k}
+    kl_threshold: 5
+    use_kl_loss: true
+    kl_loss_coef: 0.0
+    ppo_mini_batch_size: 128
+    ppo_micro_batch_size_per_gpu: 8
+    clip_ratio_low: 0.20
+    clip_ratio_high: 0.28
+    ulysses_sequence_parallel_size: 1
+    fsdp_config:
+      fsdp_size: -1
+      param_offload: true
+      optimizer_offload: true
+    checkpoint:
+      save_contents: [model, hf_model, optimizer, extra]
+      load_contents: [model, hf_model, optimizer, extra]
+    optim:
+      lr: 2e-5
+  ref:
+    distrl_topk: ${candidate_top_k}
+    log_prob_micro_batch_size_per_gpu: 32
+    ulysses_sequence_parallel_size: 1
+    fsdp_config:
+      param_offload: true
+
+reward_model:
+  reuse_ref: true
+  enable: true
+  strategy: fsdp
+  seq_agg: mean
+  model:
+    path: ${paths.step2_rm_path}
+    ref_path: ${paths.step1_sft_path}
+    tokenizer_path: ${paths.step2_rm_path}
+    attn_implementation: ${actor_rollout_ref.model.override_config.attn_implementation}
+    distrl_mode: repeat
+    input_tokenizer: null
+    use_remove_padding: true
+    use_fused_kernels: ${actor_rollout_ref.model.use_fused_kernels}
+    enable_gradient_checkpointing: ${actor_rollout_ref.model.enable_gradient_checkpointing}
+    ref_type: freeze
+    update: before
+    beta_train: 10.0
+    margin: 5.0
+    loss_type: ipvrm
+    use_dlw: true
+    use_adb: true
+    use_shm: true
+    lora_rank: 0
+    lora_alpha: 16
+    target_modules: all-linear
+    fsdp_config:
+      min_num_params: 0
+      param_offload: ${actor_rollout_ref.actor.fsdp_config.param_offload}
+      optimizer_offload: ${actor_rollout_ref.actor.fsdp_config.optimizer_offload}
+    optim:
+      lr: 2e-6
+      lr_warmup_steps: -1
+      lr_warmup_steps_ratio: 0.0
+      min_lr_ratio: null
+      warmup_style: constant
+      total_training_steps: -1
+      weight_decay: 0.0
+      grad_clip: 10.0
+  rollout:
+    load_format: safetensors
+    layered_summon: true
+  mini_batch_size: ${actor_rollout_ref.actor.ppo_mini_batch_size}
+  micro_batch_size_per_gpu: 16
+  use_dynamic_bsz: false
+  ppo_max_token_len_per_gpu: ${actor_rollout_ref.actor.ppo_max_token_len_per_gpu}
+  reward_manager: prime
+  ref_model_type: old
+  ulysses_sequence_parallel_size: 1
+
+reward:
+  reward_model:
+    enable: ${reward_model.enable}
+
+algorithm:
+  adv_estimator: grpo
+  reward_gt_coef: 1.0
+  reward_gae_coef: 0.05
+  td_norm: value # ['batch', 'value'] if use 'value', the td adv will be divided by the Standard deviation of Value, if use 'batch', the td adv will be divided by the max absolute gae return in the current batch
+  gamma: 1.0 # gamma used in gae
+  lam: 1.0 # lambda used in gae
+
+trainer:
+  project_name: ipvrm-distrl
+  experiment_name: default
+  logger: [console, swanlab]
+  val_before_train: false
+  balance_batch: false
+  critic_warmup: 0
+  n_gpus_per_node: 2
+  nnodes: 1
+  save_freq: 17
+  test_freq: 17
+  total_epochs: 1
+  main_path: ${paths.workspace_root}
+  default_local_dir: ${paths.output_dir}
+
+candidate_top_k: 5
+candidate_min_p: 0.1
+candidate_top_p: 1

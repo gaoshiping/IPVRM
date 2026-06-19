@@ -1,0 +1,18 @@
+cff-version: 1.2.0
+title: "Unleashing Implicit Rewards: Prefix-Value Learning for Distribution-Level Optimization"
+message: "If you use this repository, please cite the associated paper."
+type: software
+authors:
+  - family-names: Gao
+    given-names: Shiping
+  - family-names: Chen
+    given-names: Hongzhan
+  - family-names: Quan
+    given-names: Xiaojun
+  - family-names: Wang
+    given-names: Qifan
+  - family-names: Huang
+    given-names: Lifu
+year: 2026
+license: Apache-2.0
+repository-code: "https://github.com/gaoshiping/IPVRM"
